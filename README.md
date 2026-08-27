@@ -1,10 +1,10 @@
-# 📱 Call Tracer App
+# Call Tracer App
 
 A full-stack call-log tracking and analytics application designed for sales team monitoring with disclosed and consensual employee monitoring on company-issued Android devices.
 
 ---
 
-## 🏗️ Tech Stack
+## Tech Stack
 
 - **Mobile (Frontend):** React Native (Expo SDK 54, React 19)
   - **Typography:** Clash Display (Display / KPI) & Inter (Body UI)
@@ -19,7 +19,7 @@ A full-stack call-log tracking and analytics application designed for sales team
 
 ---
 
-## 📂 Project Structure
+## Project Structure
 
 ```
 Call Tracer App/
@@ -44,7 +44,7 @@ Call Tracer App/
 
 ---
 
-## 🚀 Quick Start Guide
+## Quick Start Guide
 
 ### 1. Backend Setup
 
@@ -81,5 +81,6 @@ npx expo start -c
 
 ---
 
-## 🔒 Security & Privacy Notice
-This application is intended strictly for company-issued devices with explicit employee disclosure and consent. No call audio recordings are captured; only call metadata (number, duration, direction, timestamp) is synced for analytics.
+## Security & Privacy Notice
+
+This application is intended strictly for company-issued devices with explicit employee disclosure and consent. No call audio recordings are captured; only call metadata (number, duration, direction) is tracked.
