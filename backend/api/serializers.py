@@ -5,22 +5,55 @@ Serializers for the Call Tracer API.
 from django.contrib.auth import get_user_model
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-
-from .models import CallLog, CallStats
+from api.models import CallLog, CallStats
 
 User = get_user_model()
 
 
-# ---------------------------------------------------------------------------
-# Auth serializers
-# ---------------------------------------------------------------------------
+class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    """Custom JWT serializer that embeds role, connect_code, and user info in response."""
+
+    @classmethod
+    def get_token(cls, user):
+        token = super().get_token(user)
+        token["username"] = user.username
+        token["role"] = user.role
+        token["connect_code"] = user.connect_code
+        token["consent_given"] = user.consent_given
+        return token
+
+    def validate(self, attrs):
+        data = super().validate(attrs)
+        data["user"] = {
+            "id": self.user.id,
+            "username": self.user.username,
+            "email": self.user.email,
+            "role": self.user.role,
+            "connect_code": self.user.connect_code,
+            "admin_id": self.user.admin_id_id,
+            "device_id": self.user.device_id,
+            "device_model": self.user.device_model,
+            "app_version": self.user.app_version,
+            "consent_given": self.user.consent_given,
+        }
+        return data
 
 
 class RegisterSerializer(serializers.ModelSerializer):
-    """Handles user registration with password confirmation."""
+    """
+    Handles registration for both admins and employees.
+    - If registering as admin: auto-generates unique connect_code
+    - If registering as employee: requires valid connect_code from manager
+    """
 
     password = serializers.CharField(write_only=True, min_length=8)
     password_confirm = serializers.CharField(write_only=True, min_length=8)
+    connect_code = serializers.CharField(
+        write_only=True,
+        required=False,
+        allow_blank=True,
+        help_text="Manager's connect code (e.g. OBL-XXXX-XXXX). Required for employees.",
+    )
 
     class Meta:
         model = User
@@ -30,61 +63,97 @@ class RegisterSerializer(serializers.ModelSerializer):
             "email",
             "password",
             "password_confirm",
+            "role",
+            "connect_code",
             "device_id",
+            "device_model",
+            "app_version",
         ]
-        extra_kwargs = {
-            "email": {"required": True},
-        }
 
     def validate(self, attrs):
-        if attrs["password"] != attrs.pop("password_confirm"):
+        if attrs.get("password") != attrs.get("password_confirm"):
             raise serializers.ValidationError(
                 {"password_confirm": "Passwords do not match."}
             )
+
+        role = attrs.get("role", "user")
+        connect_code = (attrs.get("connect_code") or "").strip().upper()
+
+        if role == "user":
+            if not connect_code:
+                raise serializers.ValidationError(
+                    {"connect_code": "Company connect code is required for employee registration."}
+                )
+            admin_user = User.objects.filter(role="admin", connect_code=connect_code).first()
+            if not admin_user:
+                raise serializers.ValidationError(
+                    {"connect_code": "Invalid connect code."}
+                )
+            attrs["_admin_user"] = admin_user
+
         return attrs
 
     def create(self, validated_data):
-        user = User.objects.create_user(
-            username=validated_data["username"],
-            email=validated_data.get("email", ""),
-            password=validated_data["password"],
-            device_id=validated_data.get("device_id", ""),
-            role="user",  # New registrations are always employees
+        validated_data.pop("password_confirm")
+        validated_data.pop("connect_code", None)
+        admin_user = validated_data.pop("_admin_user", None)
+        password = validated_data.pop("password")
+
+        user = User(
+            admin_id=admin_user,
+            **validated_data,
         )
+        user.set_password(password)
+        user.save()
         return user
 
 
-class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
-    """
-    Extends the default JWT token serializer to include the user's role
-    in the token claims and in the response body, so the frontend can
-    route to the correct dashboard without decoding the JWT.
-    """
+class UserSerializer(serializers.ModelSerializer):
+    """Serializer for User details with aggregate call count."""
 
-    @classmethod
-    def get_token(cls, user):
-        token = super().get_token(user)
-        # Custom claims embedded in the JWT
-        token["role"] = user.role
-        token["username"] = user.username
-        return token
+    total_call_logs = serializers.IntegerField(read_only=True, default=0)
 
-    def validate(self, attrs):
-        data = super().validate(attrs)
-        # Extra fields in the response body (not in the token itself)
-        data["role"] = self.user.role
-        data["user_id"] = self.user.id
-        data["username"] = self.user.username
-        return data
+    class Meta:
+        model = User
+        fields = [
+            "id",
+            "username",
+            "email",
+            "role",
+            "admin_id",
+            "connect_code",
+            "device_id",
+            "device_model",
+            "app_version",
+            "consent_given",
+            "date_joined",
+            "last_login",
+            "total_call_logs",
+        ]
+        read_only_fields = ["id", "date_joined", "last_login", "connect_code"]
 
 
-# ---------------------------------------------------------------------------
-# CallLog serializers
-# ---------------------------------------------------------------------------
+class CallLogItemSerializer(serializers.Serializer):
+    """Validates individual call log entries inside a sync batch."""
+
+    phone_number = serializers.CharField(max_length=20)
+    call_type = serializers.ChoiceField(choices=CallLog.CALL_TYPE_CHOICES)
+    duration = serializers.IntegerField(min_value=0)
+    timestamp = serializers.DateTimeField()
+
+
+class CallLogSyncSerializer(serializers.Serializer):
+    """Validates a batch of call logs submitted for synchronization."""
+
+    call_logs = serializers.ListField(
+        child=CallLogItemSerializer(),
+        allow_empty=False,
+        max_length=500,
+    )
 
 
 class CallLogSerializer(serializers.ModelSerializer):
-    """Serializer for individual call log entries."""
+    """Full CallLog model serializer for admin list/detail views."""
 
     username = serializers.CharField(source="user.username", read_only=True)
 
@@ -100,69 +169,11 @@ class CallLogSerializer(serializers.ModelSerializer):
             "timestamp",
             "synced_at",
         ]
-        read_only_fields = ["id", "user", "synced_at"]
-
-
-class CallLogSyncItemSerializer(serializers.Serializer):
-    """
-    Serializer for a single call log entry within a bulk sync request.
-    Does NOT include user — that is inferred from the authenticated request.
-    """
-
-    phone_number = serializers.CharField(max_length=20)
-    call_type = serializers.ChoiceField(
-        choices=CallLog.CALL_TYPE_CHOICES,
-    )
-    duration = serializers.IntegerField(min_value=0)
-    timestamp = serializers.DateTimeField()
-
-
-class CallLogSyncSerializer(serializers.Serializer):
-    """
-    Accepts a list of call log entries for bulk sync.
-    Usage: POST /api/call-logs/sync with body {"call_logs": [...]}
-    """
-
-    call_logs = CallLogSyncItemSerializer(many=True)
-
-    def validate_call_logs(self, value):
-        if not value:
-            raise serializers.ValidationError("call_logs list cannot be empty.")
-        if len(value) > 100:
-            raise serializers.ValidationError(
-                "Maximum 100 call logs per sync request."
-            )
-        return value
-
-
-# ---------------------------------------------------------------------------
-# Admin serializers
-# ---------------------------------------------------------------------------
-
-
-class UserListSerializer(serializers.ModelSerializer):
-    """Serializer for admin user list — shows employee details."""
-
-    total_call_logs = serializers.SerializerMethodField()
-
-    class Meta:
-        model = User
-        fields = [
-            "id",
-            "username",
-            "email",
-            "device_id",
-            "date_joined",
-            "last_login",
-            "total_call_logs",
-        ]
-
-    def get_total_call_logs(self, obj):
-        return obj.call_logs.count()
+        read_only_fields = ["id", "synced_at"]
 
 
 class CallStatsSerializer(serializers.ModelSerializer):
-    """Serializer for aggregated call statistics."""
+    """CallStats model serializer for aggregated analytics."""
 
     username = serializers.CharField(source="user.username", read_only=True)
 

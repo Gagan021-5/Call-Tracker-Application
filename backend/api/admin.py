@@ -3,42 +3,62 @@ Django Admin configuration for Call Tracer models.
 """
 
 from django.contrib import admin
+from django.contrib.auth import get_user_model
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 
-from .models import CallLog, CallStats, User
+from api.models import CallLog, CallStats
+
+User = get_user_model()
 
 
 @admin.register(User)
-class UserAdmin(BaseUserAdmin):
-    """Custom admin for the User model with role and device_id fields."""
+class CustomUserAdmin(BaseUserAdmin):
+    """Admin configuration for User model."""
 
     list_display = [
         "username",
         "email",
         "role",
-        "device_id",
-        "date_joined",
-        "last_login",
+        "connect_code",
+        "admin_id",
+        "device_model",
+        "consent_given",
         "is_active",
+        "date_joined",
     ]
-    list_filter = ["role", "is_active", "date_joined"]
-    search_fields = ["username", "email", "device_id"]
+    list_filter = ["role", "consent_given", "is_active", "is_staff"]
+    search_fields = ["username", "email", "connect_code", "device_id", "device_model"]
     ordering = ["-date_joined"]
 
-    # Add custom fields to the admin form
     fieldsets = BaseUserAdmin.fieldsets + (
         (
-            "Call Tracer",
+            "Call Tracer & Team Management",
             {
-                "fields": ("role", "device_id"),
+                "fields": (
+                    "role",
+                    "connect_code",
+                    "admin_id",
+                    "device_id",
+                    "device_model",
+                    "app_version",
+                    "consent_given",
+                ),
             },
         ),
     )
     add_fieldsets = BaseUserAdmin.add_fieldsets + (
         (
-            "Call Tracer",
+            "Call Tracer & Team Management",
             {
-                "fields": ("role", "device_id"),
+                "fields": (
+                    "role",
+                    "connect_code",
+                    "admin_id",
+                    "device_id",
+                    "device_model",
+                    "app_version",
+                    "consent_given",
+                ),
             },
         ),
     )
@@ -65,7 +85,7 @@ class CallLogAdmin(admin.ModelAdmin):
 
 @admin.register(CallStats)
 class CallStatsAdmin(admin.ModelAdmin):
-    """Admin for viewing aggregated daily call statistics."""
+    """Admin for viewing aggregated call statistics."""
 
     list_display = [
         "user",
