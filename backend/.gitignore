@@ -1,0 +1,29 @@
+# =============================================================================
+# Backend .gitignore — Django & Python
+# =============================================================================
+
+# Environment Variables
+.env
+.env.*
+!.env.example
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local SQLite databases
+*.sqlite3
+db.sqlite3-journal
+
+# Virtual Environments
+venv/
+.venv/
+env/
+
+# Static / Media directories
+media/
+staticfiles/
+
+# Logs
+*.log
