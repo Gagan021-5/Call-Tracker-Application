@@ -1,0 +1,25 @@
+databases:
+  - name: calltracer-postgres
+    plan: free
+    databaseName: calltracer_db
+    user: calltracer_user
+
+services:
+  - type: web
+    name: calltracer-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: "./build.sh"
+    startCommand: "gunicorn calltracer.wsgi:application --bind 0.0.0.0:$PORT"
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: calltracer-postgres
+          property: connectionString
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DEBUG
+        value: "False"
+      - key: ALLOWED_HOSTS
+        value: "*"
