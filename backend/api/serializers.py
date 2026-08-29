@@ -94,13 +94,25 @@ class RegisterSerializer(serializers.ModelSerializer):
         return attrs
 
     def create(self, validated_data):
+        from api.models import generate_connect_code
+
         validated_data.pop("password_confirm")
         validated_data.pop("connect_code", None)
         admin_user = validated_data.pop("_admin_user", None)
         password = validated_data.pop("password")
+        role = validated_data.get("role", "user")
+
+        connect_code = None
+        if role == "admin":
+            while True:
+                code = generate_connect_code()
+                if not User.objects.filter(connect_code=code).exists():
+                    connect_code = code
+                    break
 
         user = User(
             admin_id=admin_user,
+            connect_code=connect_code,
             **validated_data,
         )
         user.set_password(password)
