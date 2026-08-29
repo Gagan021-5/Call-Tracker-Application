@@ -168,8 +168,8 @@ class CallLogSyncView(APIView):
 
 class AdminProfileView(APIView):
     """
-    GET /api/admin/profile/
-    Returns the requesting admin's profile including their unique connect_code.
+    GET /api/admin/profile/ -> returns admin profile & connect code.
+    PATCH /api/admin/profile/ -> updates admin username, email, and password.
     """
 
     permission_classes = [IsAdminRole]
@@ -178,6 +178,42 @@ class AdminProfileView(APIView):
         admin = request.user
         return Response(
             {
+                "id": admin.id,
+                "username": admin.username,
+                "email": admin.email,
+                "role": admin.role,
+                "connect_code": admin.connect_code,
+                "total_employees": admin.employees.count(),
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    def patch(self, request):
+        admin = request.user
+        serializer = AdminProfileUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        data = serializer.validated_data
+        if "username" in data and data["username"]:
+            new_username = data["username"].strip()
+            if User.objects.filter(username=new_username).exclude(id=admin.id).exists():
+                return Response(
+                    {"username": "This username is already taken."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            admin.username = new_username
+
+        if "email" in data and data["email"]:
+            admin.email = data["email"].strip()
+
+        if "password" in data and data["password"]:
+            admin.set_password(data["password"])
+
+        admin.save()
+
+        return Response(
+            {
+                "message": "Admin profile updated successfully.",
                 "id": admin.id,
                 "username": admin.username,
                 "email": admin.email,
@@ -202,7 +238,10 @@ class AdminUserListView(generics.ListAPIView):
     def get_queryset(self):
         return (
             User.objects.filter(admin_id=self.request.user.id)
-            .annotate(total_call_logs=Count("call_logs"))
+            .annotate(
+                total_call_logs=Count("call_logs"),
+                last_call_timestamp=Max("call_logs__timestamp"),
+            )
             .order_by("-date_joined")
         )
 

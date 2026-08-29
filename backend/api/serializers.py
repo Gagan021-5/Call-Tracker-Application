@@ -121,9 +121,10 @@ class RegisterSerializer(serializers.ModelSerializer):
 
 
 class UserSerializer(serializers.ModelSerializer):
-    """Serializer for User details with aggregate call count."""
+    """Serializer for User details with aggregate call count and latest call time."""
 
     total_call_logs = serializers.IntegerField(read_only=True, default=0)
+    last_call_timestamp = serializers.DateTimeField(read_only=True, required=False, allow_null=True)
 
     class Meta:
         model = User
@@ -141,8 +142,24 @@ class UserSerializer(serializers.ModelSerializer):
             "date_joined",
             "last_login",
             "total_call_logs",
+            "last_call_timestamp",
         ]
-        read_only_fields = ["id", "date_joined", "last_login", "connect_code"]
+        read_only_fields = ["id", "date_joined", "last_login", "connect_code", "last_call_timestamp"]
+
+
+class AdminProfileUpdateSerializer(serializers.Serializer):
+    """Allows an admin to update their username, email, and password."""
+
+    username = serializers.CharField(required=False, max_length=150)
+    email = serializers.EmailField(required=False)
+    password = serializers.CharField(required=False, min_length=8, write_only=True)
+    password_confirm = serializers.CharField(required=False, min_length=8, write_only=True)
+
+    def validate(self, attrs):
+        if "password" in attrs and attrs["password"]:
+            if attrs.get("password") != attrs.get("password_confirm"):
+                raise serializers.ValidationError({"password_confirm": "Passwords do not match."})
+        return attrs
 
 
 class CallLogItemSerializer(serializers.Serializer):
