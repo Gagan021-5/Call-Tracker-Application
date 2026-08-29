@@ -12,10 +12,38 @@ A full-stack call-log tracking and analytics application designed for sales team
   - **State & Storage:** `expo-secure-store` (JWT tokens) & `@react-native-async-storage/async-storage`
   - **Call Log Reader:** `react-native-call-log`
   - **Background Tasks:** `expo-background-task` + `expo-task-manager`
+  - **Network Security:** Custom Expo config plugin for local HTTP/cleartext traffic
 - **Backend:** Django 5 + Django REST Framework + PostgreSQL
   - **Authentication:** JWT (`djangorestframework-simplejwt`)
   - **Database:** PostgreSQL (`psycopg3`)
-  - **Aggregation Engine:** Custom Django management commands for daily analytics
+  - **Aggregation Engine:** Real-time query aggregation with `TruncDate` & Django management commands
+
+---
+
+## Key Features
+
+1. **Multi-Tenant Company Connect Codes:**
+   - Unique connect codes (`XXX-NNNN-NNNN`) for manager isolation.
+   - Native OS share sheet integration (WhatsApp, Slack, Gmail, Messages).
+   - Strict admin-scoped employee and log filtering.
+
+2. **Native Telephony Synchronization:**
+   - Automated synchronization of incoming, outgoing, and missed call logs.
+   - Safe TurboModule resolution and background syncing.
+   - Zero-flicker employee status screen.
+
+3. **Admin Dashboard & Team Management:**
+   - Live team members list with call volume counts and formatted last call timestamps.
+   - In-app Admin Account Settings modal for updating admin credentials and passwords directly in PostgreSQL.
+
+4. **Real-Time Analytics & Live Performance Graphs:**
+   - 7-day live call volume curve with bezier rendering.
+   - Interactive employee carousel filter (team-wide vs individual employee).
+   - Categorized distribution (Incoming, Outgoing, Missed) and ranked top client phone numbers.
+
+5. **Interactive Calendar Date Picker & Call Logs:**
+   - Full month grid date-range selector with quick presets (Today, Yesterday, Last 7D, This Month, All Time).
+   - Filter by call direction, search by phone number or employee name.
 
 ---
 
@@ -34,10 +62,13 @@ Call Tracer App/
 │   │   ├── (auth)/           # Login & Registration screens
 │   │   ├── (user)/           # Consent Disclosure & Sync Status screens
 │   │   └── (admin)/          # Team Dashboard, Call Logs table, Analytics charts
-│   ├── assets/               # Fonts (Clash Display) & Icons
+│   ├── assets/               # Fonts (Clash Display) & Logo assets
 │   ├── constants/            # Design tokens & Typography
+│   ├── contexts/             # AuthContext & JWT state management
+│   ├── plugins/              # withNetworkSecurityConfig plugin for EAS builds
 │   ├── services/             # Axios API client & background sync worker
-│   └── package.json
+│   ├── app.json              # Expo application configuration
+│   └── eas.json              # EAS Build configuration
 ├── .gitignore                # Root gitignore (secrets, node_modules, build artifacts)
 └── README.md
 ```
@@ -77,6 +108,55 @@ npm install
 
 # Start Expo with clean cache
 npx expo start -c
+```
+
+### 3. Standalone Android APK Build (EAS)
+
+```bash
+cd callapp
+
+# Build standalone Android APK
+npx eas-cli build -p android --profile preview
+```
+
+---
+
+## Database Inspection (pgAdmin / SQL)
+
+Run these queries in PostgreSQL to view registered employees and synced calls:
+
+```sql
+-- View all registered employees with their manager and call metrics
+SELECT 
+    u.id,
+    u.username AS employee_name,
+    u.email,
+    u.role,
+    u.device_model,
+    u.date_joined,
+    admin.username AS manager_name,
+    COUNT(c.id) AS total_synced_calls,
+    MAX(c.timestamp) AS last_call_time
+FROM users u
+LEFT JOIN users admin ON u.admin_id_id = admin.id
+LEFT JOIN api_calllog c ON c.user_id = u.id
+WHERE u.role = 'user'
+GROUP BY u.id, u.username, u.email, u.role, u.device_model, u.date_joined, admin.username
+ORDER BY u.date_joined DESC;
+
+-- View recent synced call logs
+SELECT 
+    c.id,
+    u.username AS employee,
+    c.phone_number,
+    c.call_type,
+    c.duration,
+    c.timestamp,
+    c.synced_at
+FROM api_calllog c
+JOIN users u ON c.user_id = u.id
+ORDER BY c.timestamp DESC
+LIMIT 50;
 ```
 
 ---
