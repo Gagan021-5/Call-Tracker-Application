@@ -121,46 +121,6 @@ npx eas-cli build -p android --profile preview
 
 ---
 
-## Database Inspection (pgAdmin / SQL)
-
-Run these queries in PostgreSQL to view registered employees and synced calls:
-
-```sql
--- View all registered employees with their manager and call metrics
-SELECT 
-    u.id,
-    u.username AS employee_name,
-    u.email,
-    u.role,
-    u.device_model,
-    u.date_joined,
-    admin.username AS manager_name,
-    COUNT(c.id) AS total_synced_calls,
-    MAX(c.timestamp) AS last_call_time
-FROM users u
-LEFT JOIN users admin ON u.admin_id_id = admin.id
-LEFT JOIN api_calllog c ON c.user_id = u.id
-WHERE u.role = 'user'
-GROUP BY u.id, u.username, u.email, u.role, u.device_model, u.date_joined, admin.username
-ORDER BY u.date_joined DESC;
-
--- View recent synced call logs
-SELECT 
-    c.id,
-    u.username AS employee,
-    c.phone_number,
-    c.call_type,
-    c.duration,
-    c.timestamp,
-    c.synced_at
-FROM api_calllog c
-JOIN users u ON c.user_id = u.id
-ORDER BY c.timestamp DESC
-LIMIT 50;
-```
-
----
-
 ## Security & Privacy Notice
 
 This application is intended strictly for company-issued devices with explicit employee disclosure and consent. No call audio recordings are captured; only call metadata (number, duration, direction) is tracked.
