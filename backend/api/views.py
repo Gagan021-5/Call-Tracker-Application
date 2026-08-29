@@ -258,22 +258,35 @@ class AdminCallLogView(generics.ListAPIView):
 
 class AdminStatsView(APIView):
     """
-    GET /api/admin/stats/<user_id>/
-    Returns aggregated stats for a specific employee belonging to this admin.
+    GET /api/admin/stats/ or GET /api/admin/stats/<user_id>/
+    Returns real-time aggregated stats and daily trend directly from CallLog.
     """
 
     permission_classes = [IsAdminRole]
 
-    def get(self, request, user_id):
+    def get(self, request, user_id=None):
+        from django.db.models.functions import TruncDate
+
         admin = request.user
-        target_user = get_object_or_404(User, id=user_id)
+        user_param = user_id or request.query_params.get("user_id")
 
-        # Verify employee belongs to this admin
-        if target_user.admin_id != admin and target_user != admin:
-            raise PermissionDenied("You do not have permission to view stats for this user.")
+        if user_param and str(user_param) not in ["0", "all"]:
+            target_user = get_object_or_404(User, id=user_param)
+            if target_user.admin_id != admin and target_user != admin:
+                raise PermissionDenied("You do not have permission to view stats for this user.")
+            logs = CallLog.objects.filter(user=target_user)
+            username = target_user.username
+            device_id = target_user.device_id
+            device_model = target_user.device_model
+            uid = target_user.id
+        else:
+            # Team-wide aggregated stats
+            logs = CallLog.objects.filter(user__admin_id=admin.id)
+            username = "Entire Team"
+            device_id = "All Devices"
+            device_model = f"{admin.employees.count()} Employees"
+            uid = 0
 
-        # Aggregate summary stats
-        logs = CallLog.objects.filter(user=target_user)
         total_calls = logs.count()
         total_duration = logs.aggregate(total=Sum("duration"))["total"] or 0
 
@@ -291,27 +304,31 @@ class AdminStatsView(APIView):
             for number, count in phone_counts.most_common(5)
         ]
 
-        # Daily trend from CallStats model (last 30 days)
-        daily_stats = (
-            CallStats.objects.filter(user=target_user)
-            .order_by("-date")[:30]
+        # Real-time daily trend directly from CallLog table
+        daily_query = (
+            logs.annotate(date=TruncDate("timestamp"))
+            .values("date")
+            .annotate(
+                calls=Count("id"),
+                duration=Sum("duration"),
+            )
+            .order_by("date")
         )
         daily_trend = [
             {
-                "date": str(s.date),
-                "calls": s.total_calls,
-                "duration": s.total_duration,
-                "calls_by_type": s.calls_by_type,
+                "date": str(item["date"]),
+                "calls": item["calls"],
+                "duration": item["duration"] or 0,
             }
-            for s in daily_stats
+            for item in daily_query
         ]
 
         return Response(
             {
-                "user_id": target_user.id,
-                "username": target_user.username,
-                "device_id": target_user.device_id,
-                "device_model": target_user.device_model,
+                "user_id": uid,
+                "username": username,
+                "device_id": device_id,
+                "device_model": device_model,
                 "total_calls": total_calls,
                 "total_duration": total_duration,
                 "calls_by_type": calls_by_type,
