@@ -74,7 +74,6 @@ class RegisterView(generics.CreateAPIView):
         refresh = RefreshToken.for_user(user)
         refresh["username"] = user.username
         refresh["role"] = user.role
-        refresh["connect_code"] = user.connect_code
         refresh["consent_given"] = user.consent_given
 
         return Response(

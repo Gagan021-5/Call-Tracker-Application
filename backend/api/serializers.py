@@ -11,14 +11,13 @@ User = get_user_model()
 
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
-    """Custom JWT serializer that embeds role, connect_code, and user info in response."""
+    """Custom JWT serializer that embeds role and user info in response."""
 
     @classmethod
     def get_token(cls, user):
         token = super().get_token(user)
         token["username"] = user.username
         token["role"] = user.role
-        token["connect_code"] = user.connect_code
         token["consent_given"] = user.consent_given
         return token
 
@@ -29,8 +28,6 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             "username": self.user.username,
             "email": self.user.email,
             "role": self.user.role,
-            "connect_code": self.user.connect_code,
-            "admin_id": self.user.admin_id_id,
             "device_id": self.user.device_id,
             "device_model": self.user.device_model,
             "app_version": self.user.app_version,
@@ -40,13 +37,7 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
 
 class RegisterSerializer(serializers.ModelSerializer):
-    """
-    Handles registration for both admins and employees.
-    - If registering as admin: auto-generates unique connect_code
-    - If registering as employee: requires valid connect_code from manager
-    """
-
-    """Serializer for user registration without connect codes."""
+    """Serializer for direct user/employee registration."""
 
     password = serializers.CharField(
         write_only=True, required=True, min_length=8
@@ -101,7 +92,6 @@ class UserSerializer(serializers.ModelSerializer):
             "username",
             "email",
             "role",
-            "admin_id",
             "device_id",
             "device_model",
             "app_version",

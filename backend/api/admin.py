@@ -19,25 +19,21 @@ class CustomUserAdmin(BaseUserAdmin):
         "username",
         "email",
         "role",
-        "connect_code",
-        "admin_id",
         "device_model",
         "consent_given",
         "is_active",
         "date_joined",
     ]
     list_filter = ["role", "consent_given", "is_active", "is_staff"]
-    search_fields = ["username", "email", "connect_code", "device_id", "device_model"]
+    search_fields = ["username", "email", "device_id", "device_model"]
     ordering = ["-date_joined"]
 
     fieldsets = BaseUserAdmin.fieldsets + (
         (
-            "Call Tracer & Team Management",
+            "Call Tracer & Device Info",
             {
                 "fields": (
                     "role",
-                    "connect_code",
-                    "admin_id",
                     "device_id",
                     "device_model",
                     "app_version",
@@ -48,12 +44,10 @@ class CustomUserAdmin(BaseUserAdmin):
     )
     add_fieldsets = BaseUserAdmin.add_fieldsets + (
         (
-            "Call Tracer & Team Management",
+            "Call Tracer & Device Info",
             {
                 "fields": (
                     "role",
-                    "connect_code",
-                    "admin_id",
                     "device_id",
                     "device_model",
                     "app_version",

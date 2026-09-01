@@ -1,24 +1,14 @@
 """
 Models for the Call Tracer API.
 
-- User: extends AbstractUser with role, admin_id link, connect_code, device info, and consent
+- User: extends AbstractUser with role, device info, and consent
 - CallLog: individual call log entries synced from employee devices
 - CallStats: aggregated daily per-user call statistics
 """
 
-import secrets
-import string
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.db import models
-
-
-def generate_connect_code() -> str:
-    """Generate a unique connect code for admin accounts: format XXX-NNNN-NNNN (3 uppercase letters, 4 digits, 4 digits)."""
-    letters = "".join(secrets.choice(string.ascii_uppercase) for _ in range(3))
-    digits1 = "".join(secrets.choice(string.digits) for _ in range(4))
-    digits2 = "".join(secrets.choice(string.digits) for _ in range(4))
-    return f"{letters}-{digits1}-{digits2}"
 
 
 class User(AbstractUser):
@@ -35,22 +25,6 @@ class User(AbstractUser):
         default="user",
         db_index=True,
         help_text="Determines access level: 'user' for employees, 'admin' for managers.",
-    )
-    admin_id = models.ForeignKey(
-        "self",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="employees",
-        help_text="Links an employee to their admin manager; null for admin accounts.",
-    )
-    connect_code = models.CharField(
-        max_length=20,
-        unique=True,
-        null=True,
-        blank=True,
-        db_index=True,
-        help_text="Auto-generated unique code for admin accounts (e.g. OBL-XXXX-XXXX).",
     )
     device_id = models.CharField(
         max_length=255,
@@ -83,20 +57,7 @@ class User(AbstractUser):
         ordering = ["-date_joined"]
 
     def __str__(self):
-        if self.role == "admin":
-            return f"{self.username} (Admin: {self.connect_code or 'No Code'})"
-        return f"{self.username} (Employee of {self.admin_id.username if self.admin_id else 'Unassigned'})"
-
-    def save(self, *args, **kwargs):
-        # Auto-generate unique connect code for admin users if not already set
-        if self.role == "admin" and not self.connect_code:
-            code = generate_connect_code()
-            while User.objects.filter(connect_code=code).exists():
-                code = generate_connect_code()
-            self.connect_code = code
-        elif self.role == "user":
-            self.connect_code = None
-        super().save(*args, **kwargs)
+        return f"{self.username} ({self.role})"
 
 
 class CallLog(models.Model):
