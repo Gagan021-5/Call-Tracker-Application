@@ -168,7 +168,7 @@ class CallLogSyncView(APIView):
 
 class AdminProfileView(APIView):
     """
-    GET /api/admin/profile/ -> returns admin profile & connect code.
+    GET /api/admin/profile/ -> returns admin profile & stats.
     PATCH /api/admin/profile/ -> updates admin username, email, and password.
     """
 
@@ -176,14 +176,14 @@ class AdminProfileView(APIView):
 
     def get(self, request):
         admin = request.user
+        total_employees = User.objects.filter(role="user").count()
         return Response(
             {
                 "id": admin.id,
                 "username": admin.username,
                 "email": admin.email,
                 "role": admin.role,
-                "connect_code": admin.connect_code,
-                "total_employees": admin.employees.count(),
+                "total_employees": total_employees,
             },
             status=status.HTTP_200_OK,
         )
@@ -211,6 +211,7 @@ class AdminProfileView(APIView):
 
         admin.save()
 
+        total_employees = User.objects.filter(role="user").count()
         return Response(
             {
                 "message": "Admin profile updated successfully.",
@@ -218,8 +219,7 @@ class AdminProfileView(APIView):
                 "username": admin.username,
                 "email": admin.email,
                 "role": admin.role,
-                "connect_code": admin.connect_code,
-                "total_employees": admin.employees.count(),
+                "total_employees": total_employees,
             },
             status=status.HTTP_200_OK,
         )
@@ -228,7 +228,7 @@ class AdminProfileView(APIView):
 class AdminUserListView(generics.ListAPIView):
     """
     GET /api/admin/users/
-    Lists all employees belonging to the requesting admin manager.
+    Lists all registered employees.
     """
 
     serializer_class = UserSerializer
@@ -237,7 +237,7 @@ class AdminUserListView(generics.ListAPIView):
 
     def get_queryset(self):
         return (
-            User.objects.filter(admin_id=self.request.user.id)
+            User.objects.filter(role="user")
             .annotate(
                 total_call_logs=Count("call_logs"),
                 last_call_timestamp=Max("call_logs__timestamp"),
@@ -249,7 +249,7 @@ class AdminUserListView(generics.ListAPIView):
 class AdminCallLogView(generics.ListAPIView):
     """
     GET /api/admin/call-logs/?user_id=&start_date=&end_date=
-    Lists synced call logs for employees managed by this admin.
+    Lists synced call logs for all registered employees.
     """
 
     serializer_class = CallLogSerializer
@@ -257,25 +257,16 @@ class AdminCallLogView(generics.ListAPIView):
     pagination_class = StandardResultsSetPagination
 
     def get_queryset(self):
-        admin = self.request.user
-        # Scope only to employees belonging to this admin
-        queryset = CallLog.objects.filter(user__admin_id=admin.id).select_related("user")
+        queryset = CallLog.objects.filter(user__role="user").select_related("user")
 
-        # Filter by specific user if provided
         user_id = self.request.query_params.get("user_id")
         if user_id:
-            # Verify user_id belongs to this admin
-            target_user = get_object_or_404(User, id=user_id)
-            if target_user.admin_id != admin and target_user != admin:
-                raise PermissionDenied("You do not have permission to view logs for this user.")
             queryset = queryset.filter(user_id=user_id)
 
-        # Filter by call_type
         call_type = self.request.query_params.get("call_type")
         if call_type in ["incoming", "outgoing", "missed"]:
             queryset = queryset.filter(call_type=call_type)
 
-        # Filter by date range
         start_date = self.request.query_params.get("start_date")
         if start_date:
             try:
@@ -306,24 +297,22 @@ class AdminStatsView(APIView):
     def get(self, request, user_id=None):
         from django.db.models.functions import TruncDate
 
-        admin = request.user
         user_param = user_id or request.query_params.get("user_id")
 
         if user_param and str(user_param) not in ["0", "all"]:
             target_user = get_object_or_404(User, id=user_param)
-            if target_user.admin_id != admin and target_user != admin:
-                raise PermissionDenied("You do not have permission to view stats for this user.")
             logs = CallLog.objects.filter(user=target_user)
             username = target_user.username
             device_id = target_user.device_id
             device_model = target_user.device_model
             uid = target_user.id
         else:
-            # Team-wide aggregated stats
-            logs = CallLog.objects.filter(user__admin_id=admin.id)
+            # All registered employees aggregated stats
+            logs = CallLog.objects.filter(user__role="user")
+            total_emp = User.objects.filter(role="user").count()
             username = "Entire Team"
             device_id = "All Devices"
-            device_model = f"{admin.employees.count()} Employees"
+            device_model = f"{total_emp} Employees"
             uid = 0
 
         total_calls = logs.count()

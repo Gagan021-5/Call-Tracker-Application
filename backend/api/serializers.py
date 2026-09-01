@@ -46,13 +46,13 @@ class RegisterSerializer(serializers.ModelSerializer):
     - If registering as employee: requires valid connect_code from manager
     """
 
-    password = serializers.CharField(write_only=True, min_length=8)
-    password_confirm = serializers.CharField(write_only=True, min_length=8)
-    connect_code = serializers.CharField(
-        write_only=True,
-        required=False,
-        allow_blank=True,
-        help_text="Manager's connect code (e.g. OBL-XXXX-XXXX). Required for employees.",
+    """Serializer for user registration without connect codes."""
+
+    password = serializers.CharField(
+        write_only=True, required=True, min_length=8
+    )
+    password_confirm = serializers.CharField(
+        write_only=True, required=True, min_length=8
     )
 
     class Meta:
@@ -64,7 +64,6 @@ class RegisterSerializer(serializers.ModelSerializer):
             "password",
             "password_confirm",
             "role",
-            "connect_code",
             "device_id",
             "device_model",
             "app_version",
@@ -75,44 +74,13 @@ class RegisterSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {"password_confirm": "Passwords do not match."}
             )
-
-        role = attrs.get("role", "user")
-        connect_code = (attrs.get("connect_code") or "").strip().upper()
-
-        if role == "user":
-            if not connect_code:
-                raise serializers.ValidationError(
-                    {"connect_code": "Company connect code is required for employee registration."}
-                )
-            admin_user = User.objects.filter(role="admin", connect_code=connect_code).first()
-            if not admin_user:
-                raise serializers.ValidationError(
-                    {"connect_code": "Invalid connect code."}
-                )
-            attrs["_admin_user"] = admin_user
-
         return attrs
 
     def create(self, validated_data):
-        from api.models import generate_connect_code
-
         validated_data.pop("password_confirm")
-        validated_data.pop("connect_code", None)
-        admin_user = validated_data.pop("_admin_user", None)
         password = validated_data.pop("password")
-        role = validated_data.get("role", "user")
-
-        connect_code = None
-        if role == "admin":
-            while True:
-                code = generate_connect_code()
-                if not User.objects.filter(connect_code=code).exists():
-                    connect_code = code
-                    break
 
         user = User(
-            admin_id=admin_user,
-            connect_code=connect_code,
             **validated_data,
         )
         user.set_password(password)
@@ -134,7 +102,6 @@ class UserSerializer(serializers.ModelSerializer):
             "email",
             "role",
             "admin_id",
-            "connect_code",
             "device_id",
             "device_model",
             "app_version",
@@ -144,7 +111,7 @@ class UserSerializer(serializers.ModelSerializer):
             "total_call_logs",
             "last_call_timestamp",
         ]
-        read_only_fields = ["id", "date_joined", "last_login", "connect_code", "last_call_timestamp"]
+        read_only_fields = ["id", "date_joined", "last_login", "last_call_timestamp"]
 
 
 class AdminProfileUpdateSerializer(serializers.Serializer):
